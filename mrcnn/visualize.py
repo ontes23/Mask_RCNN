@@ -1,4 +1,4 @@
-ddd"""
+"""
 Mask R-CNN
 Display and Visualization Functions.
 
