@@ -51,7 +51,7 @@ import shutil
 ROOT_DIR = os.path.abspath("../../")
 
 # Import Mask RCNN
-sys.path.append(ROOT_DIR)  # To find local version of the library
+ROOT_DIR = os.path.abspath("./Mask_RCNN")
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 
