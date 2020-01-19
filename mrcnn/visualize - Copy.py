@@ -69,13 +69,21 @@ def random_colors(N, bright=True):
     return colors
 
 
+def apply_mask(image, mask, color, alpha=0.5):
+    """Apply the given mask to the image.
+    """
+    for c in range(3):
+        image[:, :, c] = np.where(mask == 1,
+                                  image[:, :, c] *
+                                  (1 - alpha) + alpha * color[c] * 255,
+                                  image[:, :, c])
+    return image
 
 
-
-def display_instances(image, boxes, class_ids, class_names,
+def display_instances(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
-                      show_bbox=True,
+                      show_mask=True, show_bbox=True,
                       colors=None, captions=None):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
@@ -94,7 +102,7 @@ def display_instances(image, boxes, class_ids, class_names,
     if not N:
         print("\n*** No instances to display *** \n")
     else:
-        assert boxes.shape[0] == class_ids.shape[0]
+        assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
 
     # If no axis is passed, create one and automatically call show()
     auto_show = False
@@ -112,6 +120,7 @@ def display_instances(image, boxes, class_ids, class_names,
     ax.axis('off')
     ax.set_title(title)
 
+    masked_image = image.astype(np.uint32).copy()
     for i in range(N):
         color = colors[i]
 
@@ -137,22 +146,38 @@ def display_instances(image, boxes, class_ids, class_names,
         ax.text(x1, y1 + 8, caption,
                 color='w', size=11, backgroundcolor="none")
 
-        
+        # Mask
+        mask = masks[:, :, i]
+        if show_mask:
+            masked_image = apply_mask(masked_image, mask, color)
+
+        # Mask Polygon
+        # Pad to ensure proper polygons for masks that touch image edges.
+        padded_mask = np.zeros(
+            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+        padded_mask[1:-1, 1:-1] = mask
+        contours = find_contours(padded_mask, 0.5)
+        for verts in contours:
+            # Subtract the padding and flip (y, x) to (x, y)
+            verts = np.fliplr(verts) - 1
+            p = Polygon(verts, facecolor="none", edgecolor=color)
+            ax.add_patch(p)
+    ax.imshow(masked_image.astype(np.uint8))
     if auto_show:
         plt.show()
 
 
 def display_differences(image,
-                        gt_box, gt_class_id,
-                        pred_box, pred_class_id, pred_score,
+                        gt_box, gt_class_id, gt_mask,
+                        pred_box, pred_class_id, pred_score, pred_mask,
                         class_names, title="", ax=None,
-                         show_box=True,
+                        show_mask=True, show_box=True,
                         iou_threshold=0.5, score_threshold=0.5):
     """Display ground truth and prediction instances on the same image."""
     # Match predictions to ground truth
     gt_match, pred_match, overlaps = utils.compute_matches(
-        gt_box, gt_class_id,
-        pred_box, pred_class_id, pred_score,
+        gt_box, gt_class_id, gt_mask,
+        pred_box, pred_class_id, pred_score, pred_mask,
         iou_threshold=iou_threshold, score_threshold=score_threshold)
     # Ground truth = green. Predictions = red
     colors = [(0, 1, 0, .8)] * len(gt_match)\
@@ -161,6 +186,7 @@ def display_differences(image,
     class_ids = np.concatenate([gt_class_id, pred_class_id])
     scores = np.concatenate([np.zeros([len(gt_match)]), pred_score])
     boxes = np.concatenate([gt_box, pred_box])
+    masks = np.concatenate([gt_mask, pred_mask], axis=-1)
     # Captions per instance show score/IoU
     captions = ["" for m in gt_match] + ["{:.2f} / {:.2f}".format(
         pred_score[i],
@@ -172,18 +198,19 @@ def display_differences(image,
     # Display
     display_instances(
         image,
-        boxes, class_ids,
+        boxes, masks, class_ids,
         class_names, scores, ax=ax,
-        show_bbox=show_box, 
+        show_bbox=show_box, show_mask=show_mask,
         colors=colors, captions=captions,
         title=title)
 
 
-def draw_rois(image, rois, refined_rois, class_ids, class_names, limit=10):
+def draw_rois(image, rois, refined_rois, mask, class_ids, class_names, limit=10):
     """
     anchors: [n, (y1, x1, y2, x2)] list of anchors in image coordinates.
     proposals: [n, 4] the same anchors but refined to fit objects better.
     """
+    masked_image = image.copy()
 
     # Pick random anchors in case there are too many.
     ids = np.arange(rois.shape[0], dtype=np.int32)
@@ -228,6 +255,7 @@ def draw_rois(image, rois, refined_rois, class_ids, class_names, limit=10):
             # Mask
             m = utils.unmold_mask(mask[id], rois[id]
                                   [:4].astype(np.int32), image.shape)
+            masked_image = apply_mask(masked_image, m, color)
 
     ax.imshow(masked_image)
 
