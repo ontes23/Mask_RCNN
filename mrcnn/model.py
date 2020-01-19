@@ -2587,13 +2587,12 @@ class MaskRCNN():
                 self.unmold_detections(detections[i], mrcnn_mask[i],
                                        image.shape, molded_images[i].shape,
                                        window)
-            if(final_scores > 0.99):
-                results.append({
-                    "rois": final_rois,
-                    "class_ids": final_class_ids,
-                    "scores": final_scores,
-                    "masks": final_masks,
-                })
+            results.append({
+                "rois": final_rois,
+                "class_ids": final_class_ids,
+                "scores": final_scores,
+                "masks": final_masks,
+            })
         return results
 
     def get_anchors(self, image_shape):
